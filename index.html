@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <style>
+        *{
+            padding: 0;
+            margin: 0;
+        }
+    </style>
+    <script src="http://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
+    <script src="dist/three.js"></script>
+    <script src="dist/Detector.js"></script>
+    <script src="dist/controls/OrbitControls.js"></script>
+    <script src="dist/libs/stats.min.js"></script>
+
+    <!--<script src="dist/three-dxf.js"></script>-->
+    <script src="node_modules/dxf-parser/dist/dxf-parser.js?t=12552"></script>
+    <script src="dist/loaders/DXFLoader.js?t=1289776"></script>
+    <script src="dist/loaders/ColladaLoader.js"></script>
+
+</head>
+<body>
+    <div id="WebGL-output" style="width:1200px; height:500px;"></div>
+</body>
+<script>
+    var camera, scene, renderer, viewControl, entities;
+    scene = new THREE.Scene();//场景构建
+    camera = new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,0.1,2000000);//相机构建
+    renderer = new THREE.WebGLRenderer({
+        preserveDrawingBuffer: true,
+        antialias: true // 开启抗锯齿
+    });//渲染器构建
+    renderer.setClearColor(0x222222); // 设置背景颜色
+    renderer.setSize(window.innerWidth,window.innerHeight);
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.shadowMapEnabled = true;//激活阴影
+    //构建一个坐标轴
+    var axes = new THREE.AxisHelper(40);
+    scene.add(axes);
+
+    viewControl = new THREE.OrbitControls( camera );
+    viewControl.rotateSpeed = 0.5;
+    viewControl.zoomSpeed = 3.0;
+    viewControl.panSpeed = 1.0;
+
+    viewControl.noZoom=false; // 是否禁用 缩放
+    viewControl.noPan=false;
+    viewControl.staticMoving = true;
+    viewControl.dynamicDampingFactor = 0.3;
+
+    //添加材质灯光阴影
+    var spotLight = new THREE.SpotLight(0xffffff);
+    spotLight.position.set(10,20,10);
+    spotLight.castShadow = false;
+    scene.add(spotLight);
+
+    var light = new THREE.HemisphereLight( 0xDDDDD6, 0xDDDDD6, 1 );
+    scene.add( light );
+
+    scene.add( new THREE.GridHelper( 1000, 40, 0x2C2C2C, 0x888888 ) ); // 添加辅助网格
+
+    //渲染视图视角
+    camera.position.x = -30;
+    camera.position.y = 20;
+    camera.position.z = 30;
+
+    camera.lookAt(scene.position);
+
+    var fontLoader = new THREE.FontLoader(), font;
+
+    fontLoader.load('./dist/fonts/SimHei_Regular.json', function(res){ //helvetiker_regular.typeface  FangSong_Regular
+        font = res;
+        console.log(font)
+    })
+
+
+
+    $("#WebGL-output").append(renderer.domElement);
+    renderScene();
+    function renderScene(){
+        var clock = new THREE.Clock(); //时间跟踪
+        var delta = clock.getDelta();
+        viewControl.update(delta);
+
+        requestAnimationFrame(renderScene);
+        renderer.render(scene,camera);
+    }
+
+    var loader = new THREE.DXFLoader();
+    var daeLoader = new THREE.ColladaLoader();
+    var timer = setInterval(function(){
+        if(font){
+            clearInterval(timer);
+            loadDxf()
+        }
+    },10);
+    function loadDxf(){
+        loader.load('./data/（总图1：500）总图2018.03.12_t7.dxf', function(data) {  // （总图1：500）总图2018.03.12_t7
+            var object = data;
+            console.log(data);
+            // entities
+            object.name = "test";
+            object.scale.set(0.001,0.001,0.001);
+            object.position.set(0,0,0);
+            object.rotateX(-Math.PI/2);
+
+            // 对象居中
+            new THREE.Box3().setFromObject( object ).getCenter( object.position ).multiplyScalar( - 1 );
+            object.position.setY(0);
+
+            object.updateMatrixWorld();
+
+            scene.add(object);
+        });
+    }
+
+
+    function loadDae(file){
+        // return false;
+
+        daeLoader.load( "./data/dae/BZC-001.dae", function ( collada ) {
+            var object = collada.scene;
+            resetObjCenter( object );
+
+            var target = scene.getChildByName("BZC-001");
+
+            var box = new THREE.Box3().setFromObject(target);
+            var max = box.max, min = box.min;
+            var phyCenter = new THREE.Vector3((max.x+min.x)/2,(max.y+min.y)/2,(max.z+min.z)/2);
+
+            addDot(phyCenter);
+
+            var tp = target.position;
+
+            var np = tp.clone();
+            target.localToWorld(np);
+
+            object.position.set(phyCenter.x,phyCenter.y,phyCenter.z);
+            object.updateMatrixWorld();
+
+            scene.add(object)
+        });
+    }
+
+
+    function addDot(vec3){
+        var geometry = new THREE.SphereBufferGeometry( 1 );
+        var material = new THREE.MeshBasicMaterial( { color: 0xff0000} );
+        var dot = new THREE.Mesh( geometry, material );
+        dot.position.set(vec3.x, vec3.y, vec3.z);
+        scene.add(dot);
+    }
+
+    function resetObjCenter(object, site){
+        var box = new THREE.Box3().setFromObject(object);
+        console.log(object)
+
+        // object.position.set( 0, 0, 0 );
+        // object.rotation.set( 0, 0, 0 );
+        // object.scale.set( 1, 1, 1 );
+        // object.updateMatrix();
+
+        object.traverse(function(item){
+            if(item.type == "Mesh"){
+                item.geometry.computeBoundingBox();
+                item.geometry.center();
+            }
+        })
+        // object.geometry.computeBoundingBox();
+        // object.geometry.center();
+
+        object.updateMatrixWorld();
+
+    }
+</script>
+</html>
